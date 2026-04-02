@@ -1,23 +1,29 @@
-# fly.toml app configuration file generated for server-solitary-sky-5202 on 2026-04-02T02:18:53Z
-#
-# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
-#
-
-app = 'server-solitary-sky-5202'
-primary_region = 'iad'
+app = "tincord"
+primary_region = "iad"
 
 [build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV    = "production"
+  PORT        = "3001"
+  TRUST_PROXY = "true"
 
 [http_service]
-  internal_port = 8080
-  force_https = true
-  auto_stop_machines = 'stop'
-  auto_start_machines = true
+  internal_port        = 3001
+  force_https          = true
+  auto_stop_machines   = "stop"
+  auto_start_machines  = true
   min_machines_running = 0
-  processes = ['app']
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval     = "30s"
+    method       = "GET"
+    path         = "/stats"
+    timeout      = "5s"
 
 [[vm]]
-  memory = '1gb'
-  cpu_kind = 'shared'
+  memory = "256mb"
+  cpu_kind = "shared"
   cpus = 1
-  memory_mb = 256

@@ -2,7 +2,7 @@ import "dotenv/config";
 
 const IS_PROD = process.env.NODE_ENV === "production";
 
-function require(key: string): string {
+function mustHave(key: string): string {
   const val = process.env[key];
   if (!val) throw new Error(`Missing required env var: ${key}`);
   return val;
@@ -33,9 +33,9 @@ export const ENV = {
 
 // Hard failures in production
 if (IS_PROD) {
-  require("REDIS_URL");
-  require("ALLOWED_ORIGIN");
-  require("TURN_URL");
-  require("TURN_SECRET");
-  require("HEALTH_API_KEY");
+  mustHave("REDIS_URL");
+  mustHave("ALLOWED_ORIGIN");
+  mustHave("TURN_URL");
+  mustHave("TURN_SECRET");
+  mustHave("HEALTH_API_KEY");
 }
