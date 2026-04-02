@@ -8,7 +8,7 @@ import Timer from "@/components/Timer";
 import { getSocket } from "@/lib/socket";
 import { useWebRTC } from "@/hooks/useWebRTC";
 
-const KOFI_USERNAME = ""; // ← fill in your Ko-fi username
+const KOFI_USERNAME = "aryaans"; 
 
 const BTN_BASE: React.CSSProperties = {
   background: "none",
