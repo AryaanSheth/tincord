@@ -23,7 +23,7 @@ type IcePayload = {
 const RATE_WINDOW_MS       = 10_000;
 const MAX_EVENTS_PER_SOCKET = 60;
 const MAX_EVENTS_PER_IP    = 120; // across all sockets from one IP
-const MAX_CONNS_PER_IP     = 3;
+const MAX_CONNS_PER_IP     = 10;
 const BAN_DURATION_SEC     = 86_400;
 const REPORTS_TO_BAN       = 3;
 const REPORT_WINDOW_SEC    = 1_800;
@@ -277,29 +277,41 @@ io.on("connection", async (socket: Socket) => {
 
   // ── find_peer ────────────────────────────────────────────────────────────────
   socket.on("find_peer", async () => {
-    if (await rateLimited(socket, ip)) return;
+    log("info", `find_peer from ${tinId}`);
+    if (await rateLimited(socket, ip)) { log("warn", `find_peer rate-limited: ${tinId}`); return; }
     if (await isBanned(ip)) { socket.emit("banned", { reason: "Suspended." }); socket.disconnect(true); return; }
     await removeFromQueueRedis(socket.id);
-    const peerId = await tryMatchRedis(socket.id);
+    let peerId: string | null = null;
+    try {
+      peerId = await tryMatchRedis(socket.id);
+    } catch (err) {
+      log("error", `tryMatchRedis error for ${tinId}: ${err}`);
+      socket.emit("waiting");
+      return;
+    }
     if (peerId) {
+      log("info", `matched ${tinId} <-> ${peerId}`);
       await setPair(socket.id, peerId);
       io.to(socket.id).emit("matched", { role: "offerer" });
       io.to(peerId).emit("matched",    { role: "answerer" });
     } else {
+      log("info", `${tinId} waiting in queue`);
       socket.emit("waiting");
     }
   });
 
   // ── Signaling relay ──────────────────────────────────────────────────────────
   socket.on("offer", async (data: unknown) => {
-    if (await rateLimited(socket, ip) || !isValidSdp(data)) return;
+    if (await rateLimited(socket, ip) || !isValidSdp(data)) { log("warn", `offer rejected from ${tinId} (rate/invalid)`); return; }
     const peerId = await getPeer(socket.id);
+    log("info", `offer from ${tinId} → ${peerId ?? "no peer"}`);
     if (peerId) io.to(peerId).emit("offer", data);
   });
 
   socket.on("answer", async (data: unknown) => {
-    if (await rateLimited(socket, ip) || !isValidSdp(data)) return;
+    if (await rateLimited(socket, ip) || !isValidSdp(data)) { log("warn", `answer rejected from ${tinId} (rate/invalid)`); return; }
     const peerId = await getPeer(socket.id);
+    log("info", `answer from ${tinId} → ${peerId ?? "no peer"}`);
     if (peerId) io.to(peerId).emit("answer", data);
   });
 
@@ -398,7 +410,7 @@ app.get("/turn-credentials", async (req, res) => {
     res.status(429).json({ error: "Too many requests" });
     return;
   }
-  res.json(generateTurnCredentials());
+  res.json(await generateTurnCredentials());
 });
 
 app.use((_req, res) => res.status(404).json({ error: "Not found" }));
@@ -424,6 +436,21 @@ process.on("uncaughtException",  (err)    => log("error", `Uncaught: ${err.stack
 process.on("unhandledRejection", (reason) => log("error", `Unhandled: ${reason}`));
 
 // ─── Start ────────────────────────────────────────────────────────────────────
-httpServer.listen(ENV.PORT, () => {
-  log("info", `TinCan :${ENV.PORT} [${ENV.NODE_ENV}] origin=${ENV.ALLOWED_ORIGIN}`);
-});
+async function start() {
+  // Clear stale connection counts and queue from any previous crashed instance.
+  // Safe for single-instance; in multi-instance, use instance-namespaced keys instead.
+  let cursor = "0";
+  do {
+    const [next, keys] = await redis.scan(cursor, "MATCH", "tc:conns:*", "COUNT", 100);
+    cursor = next;
+    if (keys.length) await redis.del(...keys);
+  } while (cursor !== "0");
+  await redis.del(KEY.queue());
+  log("info", "Cleared stale connection counts and queue");
+
+  httpServer.listen(ENV.PORT, () => {
+    log("info", `TinCan :${ENV.PORT} [${ENV.NODE_ENV}] origin=${ENV.ALLOWED_ORIGIN}`);
+  });
+}
+
+start().catch((err) => { log("error", `Startup failed: ${err}`); process.exit(1); });

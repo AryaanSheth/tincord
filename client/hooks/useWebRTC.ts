@@ -31,14 +31,8 @@ async function fetchIceConfig(): Promise<RTCConfiguration> {
   try {
     const res = await fetch(`${signalUrl}/turn-credentials`, { cache: "no-store" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const creds = await res.json();
-    return {
-      iceTransportPolicy: icePolicy,
-      iceServers: [
-        { urls: "stun:stun.l.google.com:19302" },
-        { urls: creds.urls, username: creds.username, credential: creds.credential },
-      ],
-    };
+    const { iceServers } = await res.json();
+    return { iceTransportPolicy: icePolicy, iceServers };
   } catch {
     // Fallback: STUN only (no TURN). Fine for local dev (ICE_POLICY=all).
     // In production with ICE_POLICY=relay this will prevent connections — ensure
