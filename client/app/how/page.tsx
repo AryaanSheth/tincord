@@ -89,14 +89,16 @@ end`,
   },
   {
     title: "turn credentials never in the bundle",
-    body: `TURN credentials are fetched server-side at call time via GET /turn-credentials. The server caches the Metered API response in-process for 55 minutes (credentials expire at 60 min), cutting external API calls by ~98%. The client bundle contains no TURN keys.`,
-    code: `// client: fetch at call time, not at build time
-const { iceServers } = await fetch("/turn-credentials").then(r => r.json());
+    body: `TURN credentials are generated server-side at match time and delivered through the existing WebSocket connection inside the matched event. No separate HTTP endpoint exists — credentials are only sent to users who are actually paired, never cached globally, and never reachable by unauthenticated HTTP requests.`,
+    code: `// server: generate per-match and push through the WebSocket
+const { iceServers } = await generateTurnCredentials();
+io.to(socket.id).emit("matched", { role: "offerer", iceServers });
+io.to(peerId).emit("matched",    { role: "answerer", iceServers });
 
-// server: one Metered API call per 55 minutes
-if (cachedCreds && Date.now() < cachedCreds.expiresAt) {
-  return cachedCreds.data; // cache hit
-}`,
+// client: use credentials from the matched event directly
+socket.on("matched", ({ role, iceServers }) => {
+  const pc = new RTCPeerConnection({ iceServers });
+});`,
   },
   {
     title: "reconnect re-queuing",

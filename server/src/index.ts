@@ -29,8 +29,6 @@ const REPORTS_TO_BAN       = 3;
 const REPORT_WINDOW_SEC    = 1_800;
 const MAX_SDP_BYTES        = 8_192;
 const MAX_ICE_BYTES        = 1_024;
-const TURN_RATE_WINDOW_SEC = 60;
-const MAX_TURN_REQS_PER_IP = 10;
 
 // Allowed SDP types in a normal offer/answer flow
 const VALID_SDP_TYPES = new Set(["offer", "answer"]);
@@ -293,8 +291,9 @@ io.on("connection", async (socket: Socket) => {
       log("info", `matched ${tinId} <-> ${peerId}`);
       await setPair(socket.id, peerId);
       redis.incr(KEY.totalCalls()); // fire-and-forget; non-critical counter
-      io.to(socket.id).emit("matched", { role: "offerer" });
-      io.to(peerId).emit("matched",    { role: "answerer" });
+      const { iceServers } = await generateTurnCredentials() as { iceServers: object[] };
+      io.to(socket.id).emit("matched", { role: "offerer", iceServers });
+      io.to(peerId).emit("matched",    { role: "answerer", iceServers });
     } else {
       log("info", `${tinId} waiting in queue`);
       socket.emit("waiting");
@@ -402,19 +401,6 @@ app.get("/health", requireApiKey, async (_req, res) => {
     waiting:   queueLen,
     timestamp: new Date().toISOString(),
   });
-});
-
-/** Short-lived TURN credentials. Rate-limited via Redis. */
-app.get("/turn-credentials", async (req, res) => {
-  const ip  = req.ip ?? "unknown";
-  const key = `tc:turnrl:${ip}`;
-  const count = await redis.incr(key);
-  if (count === 1) await redis.expire(key, TURN_RATE_WINDOW_SEC);
-  if (count > MAX_TURN_REQS_PER_IP) {
-    res.status(429).json({ error: "Too many requests" });
-    return;
-  }
-  res.json(await generateTurnCredentials());
 });
 
 app.use((_req, res) => res.status(404).json({ error: "Not found" }));

@@ -4,10 +4,6 @@ const TURN_SECRET  = process.env.TURN_SECRET  ?? "";
 const TURN_URL     = process.env.TURN_URL     ?? "";
 const TURN_TTL_SEC = 3_600;
 
-// Cache Metered credentials for 55 min (they expire after 60 min)
-const CACHE_TTL_MS = 55 * 60 * 1000;
-let cachedCreds: { data: object; expiresAt: number } | null = null;
-
 // Public TURN fallback for dev/testing — rate-limited, not for production load
 function openRelayFallback() {
   return {
@@ -38,10 +34,6 @@ export async function generateTurnCredentials(): Promise<object> {
 
   // Metered: GET credentials endpoint (returns ready-to-use ICE server array)
   if (domain && TURN_SECRET && domain.includes("metered.live")) {
-    // Return cached credentials if still valid
-    if (cachedCreds && Date.now() < cachedCreds.expiresAt) {
-      return cachedCreds.data;
-    }
     try {
       const res = await fetch(
         `https://${domain}/api/v1/turn/credentials?apiKey=${encodeURIComponent(TURN_SECRET)}`,
@@ -52,9 +44,7 @@ export async function generateTurnCredentials(): Promise<object> {
         throw new Error(`Metered API ${res.status}: ${body}`);
       }
       const iceServers = await res.json() as object[];
-      const data = { iceServers };
-      cachedCreds = { data, expiresAt: Date.now() + CACHE_TTL_MS };
-      return data;
+      return { iceServers };
     } catch (err) {
       console.error(`[turn] Metered API error: ${err} — falling back to OpenRelay`);
       return openRelayFallback();

@@ -23,28 +23,6 @@ export interface AudioLevels {
   remote: number;
 }
 
-// Fetch short-lived TURN credentials from the server at call time.
-// TURN credentials are never bundled in the JS — no NEXT_PUBLIC_TURN_* vars needed.
-// Fallback is STUN-only (works for local dev with ICE_POLICY=all).
-async function fetchIceConfig(): Promise<RTCConfiguration> {
-  const signalUrl = process.env.NEXT_PUBLIC_SIGNAL_URL ?? "http://localhost:3001";
-  const icePolicy = (process.env.NEXT_PUBLIC_ICE_POLICY ?? "all") as RTCIceTransportPolicy;
-
-  try {
-    const res = await fetch(`${signalUrl}/turn-credentials`, { cache: "no-store" });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const { iceServers } = await res.json();
-    return { iceTransportPolicy: icePolicy, iceServers };
-  } catch {
-    // Fallback: STUN only (no TURN). Fine for local dev (ICE_POLICY=all).
-    // In production with ICE_POLICY=relay this will prevent connections — ensure
-    // the signaling server is reachable before deploying.
-    return {
-      iceTransportPolicy: icePolicy,
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-    };
-  }
-}
 
 export function useWebRTC(socket: Socket) {
   const [callState, setCallState]     = useState<CallState>("idle");
@@ -180,9 +158,9 @@ export function useWebRTC(socket: Socket) {
   }, [closePeer, stopAnalyzerLoop]);
 
   // ── RTCPeerConnection ─────────────────────────────────────────────────────────
-  const createPC = useCallback(async (stream: MediaStream): Promise<RTCPeerConnection> => {
-    const iceConfig = await fetchIceConfig();
-    const pc = new RTCPeerConnection(iceConfig);
+  const createPC = useCallback(async (stream: MediaStream, iceServers: RTCIceServer[]): Promise<RTCPeerConnection> => {
+    const icePolicy = (process.env.NEXT_PUBLIC_ICE_POLICY ?? "all") as RTCIceTransportPolicy;
+    const pc = new RTCPeerConnection({ iceTransportPolicy: icePolicy, iceServers });
     pcRef.current = pc;
     iceCandidateBuffer.current = [];
     remoteDescSet.current = false;
@@ -285,13 +263,13 @@ export function useWebRTC(socket: Socket) {
 
     socket.on("waiting", () => setCallState("searching")); // confirm still queued
 
-    socket.on("matched", async ({ role }: { role: "offerer" | "answerer" }) => {
+    socket.on("matched", async ({ role, iceServers }: { role: "offerer" | "answerer"; iceServers: RTCIceServer[] }) => {
       const stream = localStreamRef.current;
       if (!stream) return;
       clearSearchTimer();
       // If WebRTC handshake doesn't complete within 30 s, give up
       startConnectTimer(() => { socket.emit("hang_up"); teardown("timeout"); });
-      const pc = await createPC(stream);
+      const pc = await createPC(stream, iceServers);
       if (role === "offerer") {
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
