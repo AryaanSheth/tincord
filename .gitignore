@@ -1,0 +1,7 @@
+node_modules/
+.env
+*.env.local
+dist/
+.next/
+nginx/certs/*.pem
+nginx/certs/*.key
