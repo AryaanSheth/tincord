@@ -38,7 +38,8 @@ const sections = [
 export default function Privacy() {
   return (
     <div style={{
-      minHeight: "100vh",
+      height: "100vh",
+      overflowY: "auto",
       background: "#1a1612",
       fontFamily: "'IBM Plex Mono', monospace",
       color: "#8a7a6a",
