@@ -466,6 +466,12 @@ export default function Home() {
               ♥ support
             </a>
           )}
+          <a href="/how"
+            style={{ fontSize: 9, color: "#3a3530", letterSpacing: 2, textTransform: "uppercase", textDecoration: "none" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "#6a5d50"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "#3a3530"; }}>
+            how it&apos;s built
+          </a>
           <a href="/privacy"
             style={{ fontSize: 9, color: "#3a3530", letterSpacing: 2, textTransform: "uppercase", textDecoration: "none" }}
             onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "#6a5d50"; }}
