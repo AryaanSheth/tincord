@@ -338,6 +338,8 @@ io.on("connection", async (socket: Socket) => {
       log("warn", `Shadow-banned ${hashIP(peerMeta.ip)}`);
       io.to(peerId).emit("banned", { reason: "Suspended for 24 hours due to multiple reports." });
       io.in(peerId).disconnectSockets(true);
+    } else {
+      io.to(peerId).emit("peer_hung_up");
     }
 
     await deletePair(socket.id, peerId);
