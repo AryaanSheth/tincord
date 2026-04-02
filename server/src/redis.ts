@@ -44,6 +44,7 @@ export const KEY = {
   ban:        (ip: string)  => `tc:ban:${ip}`,
   reports:    (ip: string)  => `tc:reports:${ip}`,
   connCount:  (ip: string)  => `tc:conns:${ip}`,
+  totalCalls: ()         => "tc:total_calls",
 };
 
 // TTLs

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState } from "react";
 import TinCan from "@/components/TinCan";
 import StringCanvas from "@/components/StringCanvas";
 import VoiceLevel from "@/components/VoiceLevel";
@@ -30,7 +30,6 @@ export default function Home() {
 
   // Footer stats — polled from server health endpoint
   const [stats, setStats] = useState({ online: 0, totalCalls: 0 });
-  const totalCallsRef = useRef(0);
 
   useEffect(() => {
     bindSocketEvents();
@@ -52,7 +51,7 @@ export default function Home() {
       try {
         const res = await fetch(url);
         const data = await res.json();
-        setStats({ online: data.waiting ?? 0, totalCalls: totalCallsRef.current });
+        setStats({ online: data.waiting ?? 0, totalCalls: data.totalCalls ?? 0 });
       } catch { /* server not reachable */ }
     };
     poll();

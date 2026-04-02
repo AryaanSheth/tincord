@@ -292,6 +292,7 @@ io.on("connection", async (socket: Socket) => {
     if (peerId) {
       log("info", `matched ${tinId} <-> ${peerId}`);
       await setPair(socket.id, peerId);
+      redis.incr(KEY.totalCalls()); // fire-and-forget; non-critical counter
       io.to(socket.id).emit("matched", { role: "offerer" });
       io.to(peerId).emit("matched",    { role: "answerer" });
     } else {
@@ -382,8 +383,11 @@ function requireApiKey(req: Request, res: Response, next: NextFunction) {
 
 /** Public stats — only exposes what the UI needs. No auth required. */
 app.get("/stats", async (_req, res) => {
-  const queueLen = await redis.llen(KEY.queue());
-  res.json({ waiting: queueLen });
+  const [queueLen, totalCalls] = await Promise.all([
+    redis.llen(KEY.queue()),
+    redis.get(KEY.totalCalls()),
+  ]);
+  res.json({ waiting: queueLen, totalCalls: parseInt(totalCalls ?? "0", 10) });
 });
 
 /** Internal health check — requires API key in production. */
