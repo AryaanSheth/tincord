@@ -39,56 +39,45 @@ export default function StringCanvas({ active, searching, localLevel, remoteLeve
       ctx.clearRect(0, 0, w, h);
 
       const midY = h / 2;
+
+      // Calm sine wave when audio detected, still line when silent
       const amplitude = active
-        ? 3 + combinedLevel * 22
+        ? combinedLevel * 10        // gentle — scales only with voice level
         : searching
-        ? 8 + Math.sin(t * 3) * 5
-        : 1;
-      const frequency = active ? 0.015 : searching ? 0.025 : 0.01;
-      // Speed up the wave proportionally to how loud it is
-      const speed = active ? 3 + combinedLevel * 6 : 3;
+        ? 4 + Math.sin(t * 2) * 3  // subtle idle pulse while searching
+        : 0;                        // dead straight when idle
+
+      const frequency = 0.018;
+      const speed = 2.5;
 
       // Primary string
       ctx.beginPath();
       ctx.moveTo(0, midY);
       for (let x = 0; x <= w; x += 2) {
         const progress = x / w;
-        const sag = Math.sin(progress * Math.PI) * 20;
-        const wave = Math.sin(x * frequency + t * speed) * amplitude;
-        const vibration = active
-          ? Math.sin(x * 0.05 + t * (8 + combinedLevel * 10)) * (2 + combinedLevel * 4) * Math.sin(progress * Math.PI)
-          : 0;
-        ctx.lineTo(x, midY + sag + wave + vibration);
+        const sag = Math.sin(progress * Math.PI) * 18;
+        const wave = Math.sin(x * frequency + t * speed) * amplitude * Math.sin(progress * Math.PI);
+        ctx.lineTo(x, midY + sag + wave);
       }
 
       const gradient = ctx.createLinearGradient(0, 0, w, 0);
       if (active) {
-        gradient.addColorStop(0,   "#c4956a");
+        gradient.addColorStop(0,   "#6a5d50");
         gradient.addColorStop(0.5, "#e8c9a0");
-        gradient.addColorStop(1,   "#c4956a");
+        gradient.addColorStop(1,   "#6a5d50");
       } else if (searching) {
-        gradient.addColorStop(0,   "#8a7060");
-        gradient.addColorStop(0.5, "#b8956e");
-        gradient.addColorStop(1,   "#8a7060");
-      } else {
         gradient.addColorStop(0,   "#4a3f35");
-        gradient.addColorStop(0.5, "#6a5d50");
+        gradient.addColorStop(0.5, "#8a7060");
         gradient.addColorStop(1,   "#4a3f35");
+      } else {
+        gradient.addColorStop(0,   "#3a3530");
+        gradient.addColorStop(0.5, "#5a5045");
+        gradient.addColorStop(1,   "#3a3530");
       }
 
       ctx.strokeStyle = gradient;
-      ctx.lineWidth = active ? 2.5 : 2;
+      ctx.lineWidth = 1.5;
       ctx.stroke();
-
-      // Glow pass when active — intensity scales with voice
-      if (active) {
-        ctx.shadowColor = "#e8c9a0";
-        ctx.shadowBlur = 6 + combinedLevel * 20;
-        ctx.strokeStyle = `rgba(232, 201, 160, ${0.1 + combinedLevel * 0.5})`;
-        ctx.lineWidth = 2 + combinedLevel * 4;
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-      }
 
       animRef.current = requestAnimationFrame(draw);
     };

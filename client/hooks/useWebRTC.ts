@@ -50,6 +50,7 @@ export function useWebRTC(socket: Socket) {
   const [audioLevels, setAudioLevels] = useState<AudioLevels>({ local: 0, remote: 0 });
   const [connectedAt, setConnectedAt] = useState<number | null>(null);
 
+  const callStateRef       = useRef<CallState>("idle");
   const pcRef              = useRef<RTCPeerConnection | null>(null);
   const localStreamRef     = useRef<MediaStream | null>(null);
   const remoteAudioRef     = useRef<HTMLAudioElement | null>(null);
@@ -120,6 +121,9 @@ export function useWebRTC(socket: Socket) {
     cancelAnimationFrame(analyzerFrameRef.current);
     analyzerRunning.current = false;
   }, []);
+
+  // Keep ref in sync so socket event handlers always see the latest callState
+  useEffect(() => { callStateRef.current = callState; }, [callState]);
 
   // ── Search timeout timer ──────────────────────────────────────────────────────
   const startSearchTimer = useCallback(() => {
@@ -250,6 +254,15 @@ export function useWebRTC(socket: Socket) {
 
   // ── Socket event handlers ─────────────────────────────────────────────────────
   const bindSocketEvents = useCallback(() => {
+    // Re-register in queue after a reconnect (new socket ID assigned by server).
+    // Render's load balancer drops idle WebSocket connections after ~55s,
+    // causing a silent reconnect that would otherwise leave the user invisible to the queue.
+    socket.on("connect", () => {
+      if (callStateRef.current === "searching") {
+        socket.emit("find_peer");
+      }
+    });
+
     socket.on("connect_error", () => setCallState("server_error"));
 
     socket.on("identity", ({ tinId: id }: { tinId: string }) => setTinId(id));

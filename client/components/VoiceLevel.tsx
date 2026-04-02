@@ -11,9 +11,6 @@ function scaleLevel(raw: number): number {
   return Math.min(raw * 5, 1);
 }
 
-// Bar color: green → amber → warm white as level increases
-const BAR_COLORS = ["#6ab04c", "#8ac44a", "#c4b84a", "#e8c97a", "#e8c9a0", "#f0dcc0", "#fff8f0"];
-
 export default function VoiceLevel({ level, label }: VoiceLevelProps) {
   const displayLevel = scaleLevel(level);
 
@@ -23,7 +20,7 @@ export default function VoiceLevel({ level, label }: VoiceLevelProps) {
         style={{
           fontFamily: "'IBM Plex Mono', monospace",
           fontSize: 10,
-          color: "#8a7a6a",
+          color: "#6a5d50",
           letterSpacing: 2,
           textTransform: "uppercase" as const,
           marginBottom: 6,
@@ -43,16 +40,18 @@ export default function VoiceLevel({ level, label }: VoiceLevelProps) {
         {Array.from({ length: 7 }).map((_, i) => {
           const barThreshold = (i + 1) / 7;
           const isActive = barThreshold <= displayLevel;
+          // Dimmer at bottom, brighter at top — matte white
+          const opacity = isActive ? 0.3 + (i / 6) * 0.7 : 0.08;
           return (
             <div
               key={i}
               style={{
-                width: 5,
+                width: 4,
                 height: 8 + i * 4,
-                borderRadius: 2,
-                backgroundColor: isActive ? BAR_COLORS[i] : "#2a2520",
-                transition: "background-color 0.06s, box-shadow 0.06s",
-                boxShadow: isActive ? `0 0 6px ${BAR_COLORS[i]}88` : "none",
+                borderRadius: 1,
+                backgroundColor: "#e8c9a0",
+                opacity,
+                transition: "opacity 0.06s",
               }}
             />
           );
