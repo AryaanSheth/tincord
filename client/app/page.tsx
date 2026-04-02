@@ -8,6 +8,8 @@ import Timer from "@/components/Timer";
 import { getSocket } from "@/lib/socket";
 import { useWebRTC } from "@/hooks/useWebRTC";
 
+const KOFI_USERNAME = ""; // ← fill in your Ko-fi username
+
 const BTN_BASE: React.CSSProperties = {
   background: "none",
   fontFamily: "'IBM Plex Mono', monospace",
@@ -32,6 +34,7 @@ export default function Home() {
 
   // Footer stats — polled from server health endpoint
   const [stats, setStats] = useState({ online: 0, totalCalls: 0 });
+  const [githubStars, setGithubStars] = useState<number | null>(null);
 
   useEffect(() => {
     bindSocketEvents();
@@ -45,6 +48,14 @@ export default function Home() {
     const iv = setInterval(() => { count = (count + 1) % 4; setSearchDots(".".repeat(count)); }, 500);
     return () => clearInterval(iv);
   }, [callState]);
+
+  // Fetch GitHub stars once on mount — no need to poll frequently
+  useEffect(() => {
+    fetch("https://api.github.com/repos/AryaanSheth/tincord")
+      .then((r) => r.json())
+      .then((d) => { if (typeof d.stargazers_count === "number") setGithubStars(d.stargazers_count); })
+      .catch(() => {});
+  }, []);
 
   // Poll public /stats endpoint (no auth required — only exposes queue length)
   useEffect(() => {
@@ -386,7 +397,7 @@ export default function Home() {
         )}
       </div>
 
-      {/* Footer stats + privacy link */}
+      {/* Footer */}
       <div
         style={{
           position: "fixed",
@@ -399,7 +410,8 @@ export default function Home() {
           animation: "fadeIn 1.2s ease 0.6s both",
         }}
       >
-        <div style={{ display: "flex", gap: 32 }}>
+        {/* Stats row */}
+        <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: 16, color: "#6a5d50", fontWeight: 300 }}>{stats.online}</div>
             <div style={{ fontSize: 9, color: "#4a4035", letterSpacing: 2, textTransform: "uppercase", marginTop: 2 }}>online</div>
@@ -409,12 +421,58 @@ export default function Home() {
             <div style={{ fontSize: 16, color: "#6a5d50", fontWeight: 300 }}>{stats.totalCalls.toLocaleString()}</div>
             <div style={{ fontSize: 9, color: "#4a4035", letterSpacing: 2, textTransform: "uppercase", marginTop: 2 }}>calls made</div>
           </div>
+          {githubStars !== null && (
+            <>
+              <div style={{ width: 1, height: 30, background: "#2a2520" }} />
+              <a
+                href="https://github.com/AryaanSheth/tincord"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ textAlign: "center", textDecoration: "none" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.opacity = "0.7"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.opacity = "1"; }}
+              >
+                <div style={{ fontSize: 16, color: "#6a5d50", fontWeight: 300 }}>
+                  ★ {githubStars.toLocaleString()}
+                </div>
+                <div style={{ fontSize: 9, color: "#4a4035", letterSpacing: 2, textTransform: "uppercase", marginTop: 2 }}>github</div>
+              </a>
+            </>
+          )}
         </div>
-        <a href="/privacy" style={{ fontSize: 9, color: "#3a3530", letterSpacing: 2, textTransform: "uppercase", textDecoration: "none" }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "#6a5d50"; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "#3a3530"; }}>
-          privacy
-        </a>
+
+        {/* Links row */}
+        <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+          {KOFI_USERNAME && (
+            <a
+              href={`https://ko-fi.com/${KOFI_USERNAME}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                fontSize: 9, color: "#3a3530", letterSpacing: 2,
+                textTransform: "uppercase", textDecoration: "none",
+                border: "1px solid #2a2520", borderRadius: 20,
+                padding: "4px 12px",
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLAnchorElement).style.color = "#c4a878";
+                (e.currentTarget as HTMLAnchorElement).style.borderColor = "#4a3f35";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLAnchorElement).style.color = "#3a3530";
+                (e.currentTarget as HTMLAnchorElement).style.borderColor = "#2a2520";
+              }}
+            >
+              ♥ support
+            </a>
+          )}
+          <a href="/privacy"
+            style={{ fontSize: 9, color: "#3a3530", letterSpacing: 2, textTransform: "uppercase", textDecoration: "none" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "#6a5d50"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "#3a3530"; }}>
+            privacy
+          </a>
+        </div>
       </div>
     </div>
   );

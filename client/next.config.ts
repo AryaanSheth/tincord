@@ -8,7 +8,7 @@ const csp = [
   "script-src 'self' 'unsafe-eval' 'unsafe-inline'", // required by Next.js runtime
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
-  `connect-src 'self' ${signalUrl} ${signalWss}`,
+  `connect-src 'self' ${signalUrl} ${signalWss} https://api.github.com`,
   "media-src 'self' blob:",
   "img-src 'self' data: blob:",
   "frame-ancestors 'none'",
