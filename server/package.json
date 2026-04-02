@@ -1,7 +1,7 @@
 {
-  "name": "tincan-server",
+  "name": "tincord-server",
   "version": "1.0.0",
-  "description": "TinCan signaling server",
+  "description": "Tincord signaling server",
   "main": "dist/index.js",
   "scripts": {
     "dev": "nodemon --watch src --ext ts --exec ts-node src/index.ts",

@@ -125,7 +125,7 @@ export default function Home() {
       {/* Header */}
       <div className="tc-header" style={{ textAlign: "center", marginBottom: 50, animation: "fadeIn 0.8s ease" }}>
         <h1 className="tc-title" style={{ fontSize: 42, fontWeight: 300, color: "#e8c9a0", margin: 0, letterSpacing: 6, textTransform: "lowercase" }}>
-          tincan
+          tincord
         </h1>
         <div className="tc-subtitle" style={{ fontSize: 11, color: "#6a5d50", letterSpacing: 4, textTransform: "uppercase", marginTop: 8 }}>
           tin cans on a string

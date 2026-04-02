@@ -91,7 +91,7 @@ io.use((socket, next) => {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function generateTinId(): string {
-  return `TinCan-${randomBytes(6).toString("hex").toUpperCase()}`;
+  return `Tincord-${randomBytes(6).toString("hex").toUpperCase()}`;
 }
 
 function resolveIP(socket: Socket): string {
@@ -453,7 +453,7 @@ async function start() {
   log("info", "Cleared stale connection counts and queue");
 
   httpServer.listen(ENV.PORT, () => {
-    log("info", `TinCan :${ENV.PORT} [${ENV.NODE_ENV}] origin=${ENV.ALLOWED_ORIGIN}`);
+    log("info", `Tincord :${ENV.PORT} [${ENV.NODE_ENV}] origin=${ENV.ALLOWED_ORIGIN}`);
   });
 }
 

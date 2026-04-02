@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "TinCan — Intimate. Anonymous. Analog.",
+  title: "Tincord — Intimate. Anonymous. Analog.",
   description: "Ephemeral peer-to-peer voice conversations, no accounts required.",
 };
 
