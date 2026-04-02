@@ -60,7 +60,7 @@ export default function Privacy() {
         </span>
       </div>
 
-      <div style={{ maxWidth: 640, margin: "0 auto", padding: "80px 40px 120px" }}>
+      <div style={{ maxWidth: 640, margin: "0 auto", padding: "80px 40px 160px" }}>
 
         {/* Hero */}
         <div style={{ marginBottom: 72 }}>
@@ -129,7 +129,7 @@ export default function Privacy() {
 
         {/* Footer line */}
         <p style={{
-          marginTop: 64, fontSize: 10, color: "#3a3530",
+          marginTop: 80, marginBottom: 0, fontSize: 10, color: "#3a3530",
           letterSpacing: 2, textAlign: "center",
         }}>
           tincord.com — anonymous voice, nothing more.
