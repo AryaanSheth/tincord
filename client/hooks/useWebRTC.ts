@@ -5,11 +5,13 @@ import { Socket } from "socket.io-client";
 
 export type CallState =
   | "idle"
+  | "requesting_mic"  // waiting for browser mic permission dialog
   | "searching"
   | "connected"
   | "disconnected"
   | "banned"
-  | "timeout"      // no match found within SEARCH_TIMEOUT_MS
+  | "mic_denied"    // user denied mic access
+  | "timeout"       // no match found within SEARCH_TIMEOUT_MS
   | "server_error"; // signaling server unreachable
 
 const SEARCH_TIMEOUT_MS       = 60_000; // 60 s with no match → timeout state
@@ -49,6 +51,7 @@ export function useWebRTC(socket: Socket) {
   const [tinId, setTinId]             = useState("");
   const [audioLevels, setAudioLevels] = useState<AudioLevels>({ local: 0, remote: 0 });
   const [connectedAt, setConnectedAt] = useState<number | null>(null);
+  const [reconnecting, setReconnecting] = useState(false);
 
   const callStateRef       = useRef<CallState>("idle");
   const pcRef              = useRef<RTCPeerConnection | null>(null);
@@ -217,13 +220,14 @@ export function useWebRTC(socket: Socket) {
 
   // ── pickUp ────────────────────────────────────────────────────────────────────
   const pickUp = useCallback(async () => {
-    setCallState("searching");
+    setCallState("requesting_mic");
     try {
       await setupLocalAudio();
     } catch {
-      setCallState("idle");
+      setCallState("mic_denied");
       return;
     }
+    setCallState("searching");
     startAnalyzerLoop();
     startSearchTimer();
     socket.connect();
@@ -254,11 +258,23 @@ export function useWebRTC(socket: Socket) {
 
   // ── Socket event handlers ─────────────────────────────────────────────────────
   const bindSocketEvents = useCallback(() => {
+    // Track unintentional disconnects so the UI can show a reconnecting indicator.
+    socket.on("disconnect", (reason) => {
+      if (reason === "io client disconnect") return; // intentional — user hung up
+      if (["searching", "connected"].includes(callStateRef.current)) {
+        setReconnecting(true);
+      }
+    });
+
     // Re-register in queue after a reconnect (new socket ID assigned by server).
     // Render's load balancer drops idle WebSocket connections after ~55s,
     // causing a silent reconnect that would otherwise leave the user invisible to the queue.
     socket.on("connect", () => {
+      setReconnecting(false);
       if (callStateRef.current === "searching") {
+        // Reset the search timer so the reconnected user gets a full 60s window
+        clearSearchTimer();
+        startSearchTimer();
         socket.emit("find_peer");
       }
     });
@@ -324,7 +340,7 @@ export function useWebRTC(socket: Socket) {
     socket.on("peer_hung_up",    () => teardown("disconnected"));
     socket.on("banned",          () => teardown("banned"));
     socket.on("server_shutdown", () => teardown("server_error"));
-  }, [socket, createPC, teardown, clearSearchTimer, startConnectTimer]);
+  }, [socket, createPC, teardown, clearSearchTimer, startSearchTimer, startConnectTimer]);
 
   // ── Auto-transitions ──────────────────────────────────────────────────────────
   // disconnected → idle after 2s
@@ -342,7 +358,7 @@ export function useWebRTC(socket: Socket) {
   }, [callState]);
 
   return {
-    callState, tinId, audioLevels, connectedAt,
+    callState, tinId, audioLevels, connectedAt, reconnecting,
     pickUp, hangUp, next, reportPeer, bindSocketEvents,
   };
 }

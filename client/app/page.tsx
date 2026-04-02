@@ -22,8 +22,10 @@ const BTN_BASE: React.CSSProperties = {
 
 export default function Home() {
   const socket = useMemo(() => getSocket(), []);
-  const { callState, tinId, audioLevels, connectedAt, pickUp, hangUp, next, reportPeer, bindSocketEvents } =
+  const { callState, tinId, audioLevels, connectedAt, reconnecting, pickUp, hangUp, next, reportPeer, bindSocketEvents } =
     useWebRTC(socket);
+
+  const isSupported = typeof window === "undefined" || !!(navigator.mediaDevices?.getUserMedia);
 
   // Search animation dots
   const [searchDots, setSearchDots] = useState("");
@@ -61,6 +63,7 @@ export default function Home() {
 
   const isConnected = callState === "connected";
   const isSearching = callState === "searching";
+  const isIdle      = callState === "idle" || callState === "mic_denied" || callState === "banned";
 
   return (
     <div
@@ -110,6 +113,25 @@ export default function Home() {
           .tc-pick-btn     { padding: 12px 32px !important; font-size: 12px !important; }
         }
       `}</style>
+
+      {/* Reconnecting banner */}
+      {reconnecting && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0,
+          background: "rgba(26,22,18,0.95)",
+          borderBottom: "1px solid #3a3530",
+          padding: "10px 0",
+          textAlign: "center",
+          fontSize: 10,
+          color: "#6a5d50",
+          letterSpacing: 3,
+          textTransform: "uppercase",
+          zIndex: 100,
+          animation: "fadeIn 0.3s ease",
+        }}>
+          reconnecting...
+        </div>
+      )}
 
       {/* Noise texture */}
       <div
@@ -201,36 +223,67 @@ export default function Home() {
           justifyContent: "center",
         }}
       >
-        {/* IDLE */}
-        {(callState === "idle" || callState === "banned") && (
-          <div style={{ animation: "fadeIn 0.5s ease" }}>
-            <button
-              onClick={pickUp}
-              disabled={callState === "banned"}
-              className="tc-pick-btn"
-              style={{
-                ...BTN_BASE,
-                border: "1.5px solid #6a5d50",
-                color: callState === "banned" ? "#4a4035" : "#e8c9a0",
-                padding: "14px 48px",
-                fontSize: 13,
-                borderRadius: 50,
-                cursor: callState === "banned" ? "not-allowed" : "pointer",
-              }}
-              onMouseEnter={(e) => {
-                if (callState === "banned") return;
-                (e.currentTarget as HTMLButtonElement).style.borderColor = "#c4a878";
-                (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 0 30px rgba(232,201,160,0.15)";
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.borderColor = "#6a5d50";
-                (e.currentTarget as HTMLButtonElement).style.boxShadow = "none";
-              }}
-            >
-              pick up the can
-            </button>
-            <div style={{ fontSize: 10, color: callState === "banned" ? "#8b2020" : "#4a4035", marginTop: 16, letterSpacing: 2 }}>
-              {callState === "banned" ? "suspended for 24 hours." : "no accounts. no history. just voice."}
+        {/* IDLE / MIC_DENIED / BANNED */}
+        {isIdle && (
+          <div style={{ animation: "fadeIn 0.5s ease", textAlign: "center" }}>
+            {!isSupported ? (
+              <div style={{ fontSize: 12, color: "#8a7a6a", letterSpacing: 2, lineHeight: 1.8 }}>
+                your browser doesn&apos;t support voice calls.<br />
+                <span style={{ fontSize: 10, color: "#4a4035" }}>try chrome, firefox, or safari 11+</span>
+              </div>
+            ) : (
+              <>
+                <button
+                  onClick={pickUp}
+                  disabled={callState === "banned"}
+                  className="tc-pick-btn"
+                  style={{
+                    ...BTN_BASE,
+                    border: "1.5px solid #6a5d50",
+                    color: callState === "banned" ? "#4a4035" : "#e8c9a0",
+                    padding: "14px 48px",
+                    fontSize: 13,
+                    borderRadius: 50,
+                    cursor: callState === "banned" ? "not-allowed" : "pointer",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (callState === "banned") return;
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = "#c4a878";
+                    (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 0 30px rgba(232,201,160,0.15)";
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = "#6a5d50";
+                    (e.currentTarget as HTMLButtonElement).style.boxShadow = "none";
+                  }}
+                >
+                  pick up the can
+                </button>
+                <div style={{ fontSize: 10, marginTop: 16, letterSpacing: 2,
+                  color: callState === "banned" ? "#8b2020" : callState === "mic_denied" ? "#8b4a20" : "#4a4035" }}>
+                  {callState === "banned"
+                    ? "suspended for 24 hours."
+                    : callState === "mic_denied"
+                    ? "microphone access denied — check your browser settings."
+                    : "no accounts. no history. just voice."}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* REQUESTING MIC */}
+        {callState === "requesting_mic" && (
+          <div style={{ animation: "fadeIn 0.3s ease", textAlign: "center" }}>
+            <div style={{
+              width: 24, height: 24,
+              border: "1.5px solid #3a3530",
+              borderTop: "1.5px solid #6a5d50",
+              borderRadius: "50%",
+              animation: "spin 1s linear infinite",
+              margin: "0 auto 16px",
+            }} />
+            <div style={{ fontSize: 11, color: "#6a5d50", letterSpacing: 3, textTransform: "uppercase" }}>
+              allow microphone access
             </div>
           </div>
         )}
@@ -333,27 +386,35 @@ export default function Home() {
         )}
       </div>
 
-      {/* Footer stats */}
+      {/* Footer stats + privacy link */}
       <div
         style={{
           position: "fixed",
           bottom: 24,
           left: 0, right: 0,
           display: "flex",
-          justifyContent: "center",
-          gap: 32,
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 14,
           animation: "fadeIn 1.2s ease 0.6s both",
         }}
       >
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 16, color: "#6a5d50", fontWeight: 300 }}>{stats.online}</div>
-          <div style={{ fontSize: 9, color: "#4a4035", letterSpacing: 2, textTransform: "uppercase", marginTop: 2 }}>online</div>
+        <div style={{ display: "flex", gap: 32 }}>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 16, color: "#6a5d50", fontWeight: 300 }}>{stats.online}</div>
+            <div style={{ fontSize: 9, color: "#4a4035", letterSpacing: 2, textTransform: "uppercase", marginTop: 2 }}>online</div>
+          </div>
+          <div style={{ width: 1, height: 30, background: "#2a2520" }} />
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 16, color: "#6a5d50", fontWeight: 300 }}>{stats.totalCalls.toLocaleString()}</div>
+            <div style={{ fontSize: 9, color: "#4a4035", letterSpacing: 2, textTransform: "uppercase", marginTop: 2 }}>calls made</div>
+          </div>
         </div>
-        <div style={{ width: 1, height: 30, background: "#2a2520" }} />
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 16, color: "#6a5d50", fontWeight: 300 }}>{stats.totalCalls.toLocaleString()}</div>
-          <div style={{ fontSize: 9, color: "#4a4035", letterSpacing: 2, textTransform: "uppercase", marginTop: 2 }}>calls made</div>
-        </div>
+        <a href="/privacy" style={{ fontSize: 9, color: "#3a3530", letterSpacing: 2, textTransform: "uppercase", textDecoration: "none" }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "#6a5d50"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "#3a3530"; }}>
+          privacy
+        </a>
       </div>
     </div>
   );
