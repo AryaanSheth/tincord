@@ -5,19 +5,20 @@ import { useEffect, useRef } from "react";
 interface StringCanvasProps {
   active: boolean;      // connected
   searching: boolean;   // in queue
-  remoteLevel: number;  // 0–1, drives hum amplitude when active
+  localLevel: number;   // 0–1, local mic level
+  remoteLevel: number;  // 0–1, remote audio level
 }
 
-export default function StringCanvas({ active, searching, remoteLevel }: StringCanvasProps) {
+export default function StringCanvas({ active, searching, localLevel, remoteLevel }: StringCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const timeRef = useRef(0);
   const animRef = useRef(0);
-  const propsRef = useRef({ active, searching, remoteLevel });
+  const propsRef = useRef({ active, searching, localLevel, remoteLevel });
 
   // Keep latest props accessible inside the animation loop without restarting it
   useEffect(() => {
-    propsRef.current = { active, searching, remoteLevel };
-  }, [active, searching, remoteLevel]);
+    propsRef.current = { active, searching, localLevel, remoteLevel };
+  }, [active, searching, localLevel, remoteLevel]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -27,7 +28,11 @@ export default function StringCanvas({ active, searching, remoteLevel }: StringC
     const draw = () => {
       timeRef.current += 0.02;
       const t = timeRef.current;
-      const { active, searching, remoteLevel } = propsRef.current;
+      const { active, searching, localLevel, remoteLevel } = propsRef.current;
+      // Scale raw analyzer values (same factor as VoiceLevel) for visual consistency
+      const scaledLocal  = Math.min(localLevel  * 5, 1);
+      const scaledRemote = Math.min(remoteLevel * 5, 1);
+      const combinedLevel = Math.max(scaledLocal, scaledRemote);
 
       const w = canvas.width;
       const h = canvas.height;
@@ -35,11 +40,13 @@ export default function StringCanvas({ active, searching, remoteLevel }: StringC
 
       const midY = h / 2;
       const amplitude = active
-        ? 3 + remoteLevel * 12
+        ? 3 + combinedLevel * 22
         : searching
         ? 8 + Math.sin(t * 3) * 5
         : 1;
       const frequency = active ? 0.015 : searching ? 0.025 : 0.01;
+      // Speed up the wave proportionally to how loud it is
+      const speed = active ? 3 + combinedLevel * 6 : 3;
 
       // Primary string
       ctx.beginPath();
@@ -47,9 +54,9 @@ export default function StringCanvas({ active, searching, remoteLevel }: StringC
       for (let x = 0; x <= w; x += 2) {
         const progress = x / w;
         const sag = Math.sin(progress * Math.PI) * 20;
-        const wave = Math.sin(x * frequency + t * 3) * amplitude;
+        const wave = Math.sin(x * frequency + t * speed) * amplitude;
         const vibration = active
-          ? Math.sin(x * 0.05 + t * 8) * 1.5 * Math.sin(progress * Math.PI)
+          ? Math.sin(x * 0.05 + t * (8 + combinedLevel * 10)) * (2 + combinedLevel * 4) * Math.sin(progress * Math.PI)
           : 0;
         ctx.lineTo(x, midY + sag + wave + vibration);
       }
@@ -73,12 +80,12 @@ export default function StringCanvas({ active, searching, remoteLevel }: StringC
       ctx.lineWidth = active ? 2.5 : 2;
       ctx.stroke();
 
-      // Glow pass when active
+      // Glow pass when active — intensity scales with voice
       if (active) {
         ctx.shadowColor = "#e8c9a0";
-        ctx.shadowBlur = 8;
-        ctx.strokeStyle = `rgba(232, 201, 160, ${0.15 + remoteLevel * 0.25})`;
-        ctx.lineWidth = 4;
+        ctx.shadowBlur = 6 + combinedLevel * 20;
+        ctx.strokeStyle = `rgba(232, 201, 160, ${0.1 + combinedLevel * 0.5})`;
+        ctx.lineWidth = 2 + combinedLevel * 4;
         ctx.stroke();
         ctx.shadowBlur = 0;
       }

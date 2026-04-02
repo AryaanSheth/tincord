@@ -77,7 +77,7 @@ export default function Home() {
         padding: "40px 20px",
       }}
     >
-      {/* Keyframe definitions */}
+      {/* Keyframe definitions + responsive overrides */}
       <style>{`
         @keyframes tincan-pulse {
           0%   { opacity: 0.6; transform: scale(1); }
@@ -99,6 +99,16 @@ export default function Home() {
           0%, 100% { transform: translateY(0); }
           50%       { transform: translateY(-3px); }
         }
+        @media (max-width: 520px) {
+          .tc-title        { font-size: 28px !important; letter-spacing: 4px !important; }
+          .tc-subtitle     { font-size: 9px !important; }
+          .tc-can-row      { gap: 0 !important; margin-bottom: 24px !important; }
+          .tc-string-wrap  { width: 120px !important; }
+          .tc-can-svg      { width: 65px !important; height: 87px !important; }
+          .tc-header       { margin-bottom: 32px !important; }
+          .tc-controls     { min-height: 120px !important; }
+          .tc-pick-btn     { padding: 12px 32px !important; font-size: 12px !important; }
+        }
       `}</style>
 
       {/* Noise texture */}
@@ -113,11 +123,11 @@ export default function Home() {
       />
 
       {/* Header */}
-      <div style={{ textAlign: "center", marginBottom: 50, animation: "fadeIn 0.8s ease" }}>
-        <h1 style={{ fontSize: 42, fontWeight: 300, color: "#e8c9a0", margin: 0, letterSpacing: 6, textTransform: "lowercase" }}>
+      <div className="tc-header" style={{ textAlign: "center", marginBottom: 50, animation: "fadeIn 0.8s ease" }}>
+        <h1 className="tc-title" style={{ fontSize: 42, fontWeight: 300, color: "#e8c9a0", margin: 0, letterSpacing: 6, textTransform: "lowercase" }}>
           tincan
         </h1>
-        <div style={{ fontSize: 11, color: "#6a5d50", letterSpacing: 4, textTransform: "uppercase", marginTop: 8 }}>
+        <div className="tc-subtitle" style={{ fontSize: 11, color: "#6a5d50", letterSpacing: 4, textTransform: "uppercase", marginTop: 8 }}>
           tin cans on a string
         </div>
         {tinId && (
@@ -129,6 +139,7 @@ export default function Home() {
 
       {/* Cans + String */}
       <div
+        className="tc-can-row"
         style={{
           display: "flex",
           alignItems: "center",
@@ -153,10 +164,11 @@ export default function Home() {
         </div>
 
         {/* String */}
-        <div style={{ width: 240, margin: "0 -10px", marginBottom: 20 }}>
+        <div className="tc-string-wrap" style={{ width: 240, margin: "0 -10px", marginBottom: 20 }}>
           <StringCanvas
             active={isConnected}
             searching={isSearching}
+            localLevel={audioLevels.local}
             remoteLevel={audioLevels.remote}
           />
         </div>
@@ -178,6 +190,7 @@ export default function Home() {
 
       {/* Controls */}
       <div
+        className="tc-controls"
         style={{
           textAlign: "center",
           animation: "fadeIn 1s ease 0.4s both",
@@ -194,6 +207,7 @@ export default function Home() {
             <button
               onClick={pickUp}
               disabled={callState === "banned"}
+              className="tc-pick-btn"
               style={{
                 ...BTN_BASE,
                 border: "1.5px solid #6a5d50",

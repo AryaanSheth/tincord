@@ -26,7 +26,7 @@ export default function TinCan({ side, active, speaking }: TinCanProps) {
       animate={{ scale }}
       transition={{ type: "spring", stiffness: 300, damping: 20 }}
     >
-      <svg width="90" height="120" viewBox="0 0 90 120">
+      <svg className="tc-can-svg" width="90" height="120" viewBox="0 0 90 120">
         <defs>
           <linearGradient id={`canGrad-${side}`} x1="0" y1="0" x2="1" y2="0">
             <stop offset="0%"   stopColor={active ? "#a08060" : "#6b5d50"} />
