@@ -32,33 +32,19 @@ function meteredDomain(): string | null {
 export async function generateTurnCredentials(): Promise<object> {
   const domain = meteredDomain();
 
-  // Metered: POST to their credential API
+  // Metered: GET credentials endpoint (returns ready-to-use ICE server array)
   if (domain && TURN_SECRET && domain.includes("metered.live")) {
     try {
       const res = await fetch(
-        `https://${domain}/api/v1/turn/credential?secretKey=${encodeURIComponent(TURN_SECRET)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ expiryInSeconds: TURN_TTL_SEC, label: "tincan" }),
-          signal: AbortSignal.timeout(5_000),
-        }
+        `https://${domain}/api/v1/turn/credentials?apiKey=${encodeURIComponent(TURN_SECRET)}`,
+        { signal: AbortSignal.timeout(5_000) }
       );
       if (!res.ok) {
         const body = await res.text().catch(() => "");
         throw new Error(`Metered API ${res.status}: ${body}`);
       }
-      const { username, password } = await res.json() as { username: string; password: string };
-
-      return {
-        iceServers: [
-          { urls: `stun:${domain}:80` },
-          { urls: `turn:${domain}:80`,                    username, credential: password },
-          { urls: `turn:${domain}:80?transport=tcp`,      username, credential: password },
-          { urls: `turn:${domain}:443?transport=tcp`,     username, credential: password },
-          { urls: `turns:${domain}:443?transport=tcp`,    username, credential: password },
-        ],
-      };
+      const iceServers = await res.json() as object[];
+      return { iceServers };
     } catch (err) {
       console.error(`[turn] Metered API error: ${err} — falling back to OpenRelay`);
       return openRelayFallback();
