@@ -209,7 +209,10 @@ export function useWebRTC(socket: Socket) {
     startAnalyzerLoop();
     startSearchTimer();
     socket.connect();
-    socket.emit("find_peer");
+    // If already connected (subsequent pickUp after hang-up), emit directly.
+    // If not yet connected, the "connect" handler emits find_peer once the
+    // handshake completes — avoids the duplicate emission on first connect.
+    if (socket.connected) socket.emit("find_peer");
   }, [socket, setupLocalAudio, startAnalyzerLoop, startSearchTimer]);
 
   // ── hangUp ────────────────────────────────────────────────────────────────────

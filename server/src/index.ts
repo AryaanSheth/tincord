@@ -248,33 +248,56 @@ async function decrConnCount(ip: string) {
   if (count <= 0) await redis.del(KEY.connCount(ip));
 }
 
+// ─── Warm TURN credential cache ───────────────────────────────────────────────
+// Credentials are refreshed every 5 minutes in the background so that the
+// matching hot-path never blocks on an external API call.
+let warmCreds: { iceServers: object[] } | null = null;
+async function refreshWarmCreds(): Promise<void> {
+  try {
+    warmCreds = (await generateTurnCredentials()) as { iceServers: object[] };
+  } catch {
+    // Keep stale credentials; generateTurnCredentials already has internal fallbacks
+  }
+  setTimeout(() => void refreshWarmCreds(), 5 * 60 * 1_000);
+}
+
 // ─── Connection handler ───────────────────────────────────────────────────────
-io.on("connection", async (socket: Socket) => {
+// IMPORTANT: the outer callback is synchronous so that ALL socket.on() handlers
+// are registered before any await. Socket.io sends the CONNECT packet to the
+// client before this callback runs, meaning the client can fire "connect" and
+// flush its send-buffer while we are still in async setup. If handlers are not
+// registered yet, those events are silently dropped. The "ready" promise runs
+// setup in the background; each handler awaits it before doing real work.
+io.on("connection", (socket: Socket) => {
   const ip = resolveIP(socket);
+  let tinId = "";
+  let connIncremented = false;
 
-  // Ban check BEFORE incrementing connection count
-  if (await isBanned(ip)) {
-    socket.emit("banned", { reason: "Suspended for 24 hours due to multiple reports." });
-    socket.disconnect(true);
-    return;
-  }
-
-  // Per-IP connection limit
-  const connCount = await incrConnCount(ip);
-  if (connCount > MAX_CONNS_PER_IP) {
-    log("warn", `Conn limit: ${hashIP(ip)} (${connCount})`);
-    socket.disconnect(true);
-    await decrConnCount(ip);
-    return;
-  }
-
-  const tinId = generateTinId();
-  await setSocketMeta(socket.id, ip, tinId);
-  log("info", `[+] ${tinId} (${hashIP(ip)})`);
-  socket.emit("identity", { tinId });
+  const ready = (async (): Promise<boolean> => {
+    if (await isBanned(ip)) {
+      socket.emit("banned", { reason: "Suspended for 24 hours due to multiple reports." });
+      socket.disconnect(true);
+      return false;
+    }
+    const connCount = await incrConnCount(ip);
+    connIncremented = true;
+    if (connCount > MAX_CONNS_PER_IP) {
+      log("warn", `Conn limit: ${hashIP(ip)} (${connCount})`);
+      socket.disconnect(true);
+      await decrConnCount(ip);
+      connIncremented = false;
+      return false;
+    }
+    tinId = generateTinId();
+    await setSocketMeta(socket.id, ip, tinId);
+    log("info", `[+] ${tinId} (${hashIP(ip)})`);
+    socket.emit("identity", { tinId });
+    return true;
+  })();
 
   // ── find_peer ────────────────────────────────────────────────────────────────
   socket.on("find_peer", async () => {
+    if (!await ready) return;
     log("info", `find_peer from ${tinId}`);
     if (await rateLimited(socket, ip)) { log("warn", `find_peer rate-limited: ${tinId}`); return; }
     if (await isBanned(ip)) { socket.emit("banned", { reason: "Suspended." }); socket.disconnect(true); return; }
@@ -291,7 +314,7 @@ io.on("connection", async (socket: Socket) => {
       log("info", `matched ${tinId} <-> ${peerId}`);
       await setPair(socket.id, peerId);
       redis.incr(KEY.totalCalls()); // fire-and-forget; non-critical counter
-      const { iceServers } = await generateTurnCredentials() as { iceServers: object[] };
+      const { iceServers } = warmCreds ?? ((await generateTurnCredentials()) as { iceServers: object[] });
       io.to(socket.id).emit("matched", { role: "offerer", iceServers });
       io.to(peerId).emit("matched",    { role: "answerer", iceServers });
     } else {
@@ -302,6 +325,7 @@ io.on("connection", async (socket: Socket) => {
 
   // ── Signaling relay ──────────────────────────────────────────────────────────
   socket.on("offer", async (data: unknown) => {
+    if (!await ready) return;
     if (await rateLimited(socket, ip) || !isValidSdp(data)) { log("warn", `offer rejected from ${tinId} (rate/invalid)`); return; }
     const peerId = await getPeer(socket.id);
     log("info", `offer from ${tinId} → ${peerId ?? "no peer"}`);
@@ -309,6 +333,7 @@ io.on("connection", async (socket: Socket) => {
   });
 
   socket.on("answer", async (data: unknown) => {
+    if (!await ready) return;
     if (await rateLimited(socket, ip) || !isValidSdp(data)) { log("warn", `answer rejected from ${tinId} (rate/invalid)`); return; }
     const peerId = await getPeer(socket.id);
     log("info", `answer from ${tinId} → ${peerId ?? "no peer"}`);
@@ -316,6 +341,7 @@ io.on("connection", async (socket: Socket) => {
   });
 
   socket.on("ice_candidate", async (data: unknown) => {
+    if (!await ready) return;
     if (await rateLimited(socket, ip) || !isValidIce(data)) return;
     const peerId = await getPeer(socket.id);
     if (peerId) io.to(peerId).emit("ice_candidate", data);
@@ -323,6 +349,7 @@ io.on("connection", async (socket: Socket) => {
 
   // ── hang_up ──────────────────────────────────────────────────────────────────
   socket.on("hang_up", async () => {
+    if (!await ready) return;
     if (await rateLimited(socket, ip)) return;
     const peerId = await getPeer(socket.id);
     if (peerId) { io.to(peerId).emit("peer_hung_up"); await deletePair(socket.id, peerId); }
@@ -332,6 +359,7 @@ io.on("connection", async (socket: Socket) => {
 
   // ── report_peer ───────────────────────────────────────────────────────────────
   socket.on("report_peer", async () => {
+    if (!await ready) return;
     if (await rateLimited(socket, ip)) return;
     if (socket.data.reported) return;
     socket.data.reported = true;
@@ -360,13 +388,14 @@ io.on("connection", async (socket: Socket) => {
 
   // ── disconnect ────────────────────────────────────────────────────────────────
   socket.on("disconnect", async (reason) => {
+    await ready.catch(() => {}); // wait for setup so connIncremented is accurate
     const peerId = await getPeer(socket.id);
     if (peerId) { io.to(peerId).emit("peer_hung_up"); await deletePair(socket.id, peerId); }
     else await deletePair(socket.id);
     await removeFromQueueRedis(socket.id);
     await deleteSocketMeta(socket.id);
-    await decrConnCount(ip);
-    log("info", `[-] ${tinId} disconnected (${reason})`);
+    if (connIncremented) await decrConnCount(ip);
+    log("info", `[-] ${tinId || "?"} disconnected (${reason})`);
   });
 });
 
@@ -437,6 +466,8 @@ async function start() {
   } while (cursor !== "0");
   await redis.del(KEY.queue());
   log("info", "Cleared stale connection counts and queue");
+
+  void refreshWarmCreds(); // pre-fetch TURN credentials so first match is instant
 
   httpServer.listen(ENV.PORT, () => {
     log("info", `Tincord :${ENV.PORT} [${ENV.NODE_ENV}] origin=${ENV.ALLOWED_ORIGIN}`);
