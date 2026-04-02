@@ -45,22 +45,20 @@ export default function Home() {
     return () => clearInterval(iv);
   }, [callState]);
 
-  // Poll /health for live stats
+  // Poll public /stats endpoint (no auth required — only exposes queue length)
   useEffect(() => {
-    const url = (process.env.NEXT_PUBLIC_SIGNAL_URL ?? "http://localhost:3001") + "/health";
+    const url = (process.env.NEXT_PUBLIC_SIGNAL_URL ?? "http://localhost:3001") + "/stats";
     const poll = async () => {
       try {
         const res = await fetch(url);
         const data = await res.json();
-        const online = (data.waiting ?? 0) + (data.activePairs ?? 0) * 2;
-        if (callState === "connected") totalCallsRef.current = Math.max(totalCallsRef.current, data.activePairs ?? 0);
-        setStats({ online, totalCalls: totalCallsRef.current });
+        setStats({ online: data.waiting ?? 0, totalCalls: totalCallsRef.current });
       } catch { /* server not reachable */ }
     };
     poll();
     const iv = setInterval(poll, 5000);
     return () => clearInterval(iv);
-  }, [callState]);
+  }, []);
 
   const isConnected = callState === "connected";
   const isSearching = callState === "searching";

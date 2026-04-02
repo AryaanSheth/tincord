@@ -12,17 +12,21 @@ export type CallState =
   | "timeout"      // no match found within SEARCH_TIMEOUT_MS
   | "server_error"; // signaling server unreachable
 
-const SEARCH_TIMEOUT_MS = 60_000; // 60 s with no match → timeout state
+const SEARCH_TIMEOUT_MS       = 60_000; // 60 s with no match → timeout state
+const CONNECT_TIMEOUT_MS      = 30_000; // 30 s to complete WebRTC handshake after matching
+const MAX_ICE_BUFFER          = 50;     // max buffered candidates before remote desc is set
 
 export interface AudioLevels {
   local: number;
   remote: number;
 }
 
-// Fetch short-lived TURN credentials from the server (never bundled in JS)
+// Fetch short-lived TURN credentials from the server at call time.
+// TURN credentials are never bundled in the JS — no NEXT_PUBLIC_TURN_* vars needed.
+// Fallback is STUN-only (works for local dev with ICE_POLICY=all).
 async function fetchIceConfig(): Promise<RTCConfiguration> {
-  const signalUrl  = process.env.NEXT_PUBLIC_SIGNAL_URL ?? "http://localhost:3001";
-  const icePolicy  = (process.env.NEXT_PUBLIC_ICE_POLICY ?? "all") as RTCIceTransportPolicy;
+  const signalUrl = process.env.NEXT_PUBLIC_SIGNAL_URL ?? "http://localhost:3001";
+  const icePolicy = (process.env.NEXT_PUBLIC_ICE_POLICY ?? "all") as RTCIceTransportPolicy;
 
   try {
     const res = await fetch(`${signalUrl}/turn-credentials`, { cache: "no-store" });
@@ -36,17 +40,12 @@ async function fetchIceConfig(): Promise<RTCConfiguration> {
       ],
     };
   } catch {
-    // Dev fallback — env vars
+    // Fallback: STUN only (no TURN). Fine for local dev (ICE_POLICY=all).
+    // In production with ICE_POLICY=relay this will prevent connections — ensure
+    // the signaling server is reachable before deploying.
     return {
       iceTransportPolicy: icePolicy,
-      iceServers: [
-        { urls: "stun:stun.l.google.com:19302" },
-        {
-          urls:       process.env.NEXT_PUBLIC_TURN_URL  ?? "turn:localhost:3478",
-          username:   process.env.NEXT_PUBLIC_TURN_USER ?? "tincan",
-          credential: process.env.NEXT_PUBLIC_TURN_PASS ?? "tincan",
-        },
-      ],
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     };
   }
 }
@@ -68,6 +67,7 @@ export function useWebRTC(socket: Socket) {
   const iceCandidateBuffer = useRef<RTCIceCandidateInit[]>([]);
   const remoteDescSet      = useRef(false);
   const searchTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const connectTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Audio: local mic ─────────────────────────────────────────────────────────
   const setupLocalAudio = useCallback(async (): Promise<MediaStream> => {
@@ -140,9 +140,19 @@ export function useWebRTC(socket: Socket) {
     if (searchTimerRef.current) { clearTimeout(searchTimerRef.current); searchTimerRef.current = null; }
   }, []);
 
+  const startConnectTimer = useCallback((onTimeout: () => void) => {
+    if (connectTimerRef.current) clearTimeout(connectTimerRef.current);
+    connectTimerRef.current = setTimeout(onTimeout, CONNECT_TIMEOUT_MS);
+  }, []);
+
+  const clearConnectTimer = useCallback(() => {
+    if (connectTimerRef.current) { clearTimeout(connectTimerRef.current); connectTimerRef.current = null; }
+  }, []);
+
   // ── Peer teardown (keeps mic alive for next()) ────────────────────────────────
   const closePeer = useCallback(() => {
     clearSearchTimer();
+    clearConnectTimer();
     remoteAnalyzerRef.current = null;
     iceCandidateBuffer.current = [];
     remoteDescSet.current = false;
@@ -196,7 +206,7 @@ export function useWebRTC(socket: Socket) {
     pc.onconnectionstatechange = () => {
       const s = pc.connectionState;
       if (s === "connected") {
-        clearSearchTimer();
+        clearConnectTimer();
         setCallState("connected");
         setConnectedAt(Date.now());
       } else if (s === "failed" || s === "closed") {
@@ -205,7 +215,7 @@ export function useWebRTC(socket: Socket) {
     };
 
     return pc;
-  }, [socket, setupRemoteAnalyzer, clearSearchTimer, teardown]);
+  }, [socket, setupRemoteAnalyzer, clearConnectTimer, teardown]);
 
   // ── pickUp ────────────────────────────────────────────────────────────────────
   const pickUp = useCallback(async () => {
@@ -256,6 +266,8 @@ export function useWebRTC(socket: Socket) {
       const stream = localStreamRef.current;
       if (!stream) return;
       clearSearchTimer();
+      // If WebRTC handshake doesn't complete within 30 s, give up
+      startConnectTimer(() => { socket.emit("hang_up"); teardown("timeout"); });
       const pc = await createPC(stream);
       if (role === "offerer") {
         const offer = await pc.createOffer();
@@ -292,14 +304,20 @@ export function useWebRTC(socket: Socket) {
     socket.on("ice_candidate", async ({ candidate }: { candidate: RTCIceCandidateInit }) => {
       const pc = pcRef.current;
       if (!pc) return;
-      if (!remoteDescSet.current) { iceCandidateBuffer.current.push(candidate); return; }
+      if (!remoteDescSet.current) {
+        // Cap buffer to prevent memory exhaustion from a malicious peer
+        if (iceCandidateBuffer.current.length < MAX_ICE_BUFFER) {
+          iceCandidateBuffer.current.push(candidate);
+        }
+        return;
+      }
       try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch { /* benign */ }
     });
 
     socket.on("peer_hung_up",    () => teardown("disconnected"));
     socket.on("banned",          () => teardown("banned"));
     socket.on("server_shutdown", () => teardown("server_error"));
-  }, [socket, createPC, teardown, clearSearchTimer]);
+  }, [socket, createPC, teardown, clearSearchTimer, startConnectTimer]);
 
   // ── Auto-transitions ──────────────────────────────────────────────────────────
   // disconnected → idle after 2s
