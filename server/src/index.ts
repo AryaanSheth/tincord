@@ -298,7 +298,7 @@ io.on("connection", (socket: Socket) => {
   // ── find_peer ────────────────────────────────────────────────────────────────
   socket.on("find_peer", async () => {
     if (!await ready) return;
-    log("info", `find_peer from ${tinId}`);
+    log("info", `find_peer from ${tinId} (${socket.id.slice(-8)})`);
     if (await rateLimited(socket, ip)) { log("warn", `find_peer rate-limited: ${tinId}`); return; }
     if (await isBanned(ip)) { socket.emit("banned", { reason: "Suspended." }); socket.disconnect(true); return; }
     await removeFromQueueRedis(socket.id);
@@ -311,14 +311,14 @@ io.on("connection", (socket: Socket) => {
       return;
     }
     if (peerId) {
-      log("info", `matched ${tinId} <-> ${peerId}`);
+      log("info", `matched ${tinId} (${socket.id.slice(-8)}) <-> ${peerId.slice(-8)}`);
       await setPair(socket.id, peerId);
       redis.incr(KEY.totalCalls()); // fire-and-forget; non-critical counter
       const { iceServers } = warmCreds ?? ((await generateTurnCredentials()) as { iceServers: object[] });
       io.to(socket.id).emit("matched", { role: "offerer", iceServers });
       io.to(peerId).emit("matched",    { role: "answerer", iceServers });
     } else {
-      log("info", `${tinId} waiting in queue`);
+      log("info", `${tinId} (${socket.id.slice(-8)}) waiting in queue`);
       socket.emit("waiting");
     }
   });
@@ -352,6 +352,7 @@ io.on("connection", (socket: Socket) => {
     if (!await ready) return;
     if (await rateLimited(socket, ip)) return;
     const peerId = await getPeer(socket.id);
+    log("info", `hang_up from ${tinId} (${socket.id.slice(-8)}) peer=${peerId ? peerId.slice(-8) : "none"}`);
     if (peerId) { io.to(peerId).emit("peer_hung_up"); await deletePair(socket.id, peerId); }
     else await deletePair(socket.id);
     await removeFromQueueRedis(socket.id);

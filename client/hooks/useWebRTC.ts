@@ -142,7 +142,7 @@ export function useWebRTC(socket: Socket) {
       remoteAudioRef.current.srcObject = null;
       remoteAudioRef.current = null;
     }
-  }, [clearSearchTimer]);
+  }, [clearSearchTimer, clearConnectTimer]);
 
   // ── Full teardown ─────────────────────────────────────────────────────────────
   const teardown = useCallback((nextState: CallState = "idle") => {
@@ -278,6 +278,11 @@ export function useWebRTC(socket: Socket) {
     socket.on("waiting", () => setCallState("searching")); // confirm still queued
 
     socket.on("matched", async ({ role, iceServers }: { role: "offerer" | "answerer"; iceServers: RTCIceServer[] }) => {
+      // Guard: ignore stale or duplicate matched events.
+      // pcRef.current is set synchronously inside createPC (no internal awaits), so it
+      // is always accurate — unlike callStateRef which lags behind React renders.
+      if (pcRef.current) return;
+      if (!["searching", "connecting"].includes(callStateRef.current)) return;
       const stream = localStreamRef.current;
       if (!stream) return;
       clearSearchTimer();
@@ -330,7 +335,15 @@ export function useWebRTC(socket: Socket) {
       try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch { /* benign */ }
     });
 
-    socket.on("peer_hung_up",    () => teardown("disconnected"));
+    socket.on("peer_hung_up", () => {
+      // Guard against double-teardown. When both sides fail ICE simultaneously,
+      // both emit hang_up. The server cross-sends peer_hung_up to each side, but
+      // the local onconnectionstatechange "failed" handler already called teardown
+      // (which nulls pcRef.current synchronously via closePeer). If pcRef is already
+      // null there is no active connection to tear down — skip to avoid restarting
+      // the 2-second disconnected→idle timer from an already-idle state.
+      if (pcRef.current) teardown("disconnected");
+    });
     socket.on("banned",          () => teardown("banned"));
     socket.on("server_shutdown", () => teardown("server_error"));
   }, [socket, createPC, teardown, clearSearchTimer, startSearchTimer, startConnectTimer]);
