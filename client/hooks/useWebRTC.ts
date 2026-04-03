@@ -278,11 +278,13 @@ export function useWebRTC(socket: Socket) {
     socket.on("waiting", () => setCallState("searching")); // confirm still queued
 
     socket.on("matched", async ({ role, iceServers }: { role: "offerer" | "answerer"; iceServers: RTCIceServer[] }) => {
-      // Guard: ignore stale or duplicate matched events.
+      // Guard: ignore duplicate/stale matched events.
       // pcRef.current is set synchronously inside createPC (no internal awaits), so it
-      // is always accurate — unlike callStateRef which lags behind React renders.
+      // is always accurate — unlike callStateRef which lags behind React renders and
+      // can still show "requesting_mic" when matched arrives on a fast local match.
+      // localStreamRef guards against stale events from previous sessions (stream is
+      // nulled in teardown, so it's only set when the user is actively searching).
       if (pcRef.current) return;
-      if (!["searching", "connecting"].includes(callStateRef.current)) return;
       const stream = localStreamRef.current;
       if (!stream) return;
       clearSearchTimer();
