@@ -7,6 +7,7 @@ export type CallState =
   | "idle"
   | "requesting_mic"  // waiting for browser mic permission dialog
   | "searching"
+  | "connecting"    // matched, waiting for WebRTC/ICE to establish
   | "connected"
   | "disconnected"
   | "banned"
@@ -242,7 +243,7 @@ export function useWebRTC(socket: Socket) {
     // Track unintentional disconnects so the UI can show a reconnecting indicator.
     socket.on("disconnect", (reason) => {
       if (reason === "io client disconnect") return; // intentional — user hung up
-      if (["searching", "connected"].includes(callStateRef.current)) {
+      if (["searching", "connecting", "connected"].includes(callStateRef.current)) {
         setReconnecting(true);
       }
     });
@@ -250,9 +251,13 @@ export function useWebRTC(socket: Socket) {
     // Re-register in queue after a reconnect (new socket ID assigned by server).
     // Render's load balancer drops idle WebSocket connections after ~55s,
     // causing a silent reconnect that would otherwise leave the user invisible to the queue.
+    // Guard: only re-queue when there is no active peer connection. After matching,
+    // callState stays "searching" until WebRTC reaches "connected", so without this
+    // check a brief EIO-level transport recovery fires "connect" and re-queues the
+    // socket — overwriting the matched pair's queue slot and breaking signaling.
     socket.on("connect", () => {
       setReconnecting(false);
-      if (callStateRef.current === "searching") {
+      if (callStateRef.current === "searching" && !pcRef.current) {
         // Reset the search timer so the reconnected user gets a full 60s window
         clearSearchTimer();
         startSearchTimer();
@@ -270,6 +275,7 @@ export function useWebRTC(socket: Socket) {
       const stream = localStreamRef.current;
       if (!stream) return;
       clearSearchTimer();
+      setCallState("connecting");
       // If WebRTC handshake doesn't complete within 30 s, give up
       startConnectTimer(() => { socket.emit("hang_up"); teardown("timeout"); });
       const pc = await createPC(stream, iceServers);

@@ -72,9 +72,10 @@ export default function Home() {
     return () => clearInterval(iv);
   }, []);
 
-  const isConnected = callState === "connected";
-  const isSearching = callState === "searching";
-  const isIdle      = callState === "idle" || callState === "mic_denied" || callState === "banned";
+  const isConnected  = callState === "connected";
+  const isSearching  = callState === "searching";
+  const isConnecting = callState === "connecting";
+  const isIdle       = callState === "idle" || callState === "mic_denied" || callState === "banned";
 
   return (
     <div
@@ -200,7 +201,7 @@ export default function Home() {
         <div className="tc-string-wrap" style={{ width: 240, margin: "0 -10px", marginBottom: 20 }}>
           <StringCanvas
             active={isConnected}
-            searching={isSearching}
+            searching={isSearching || isConnecting}
             localLevel={audioLevels.local}
             remoteLevel={audioLevels.remote}
           />
@@ -319,6 +320,32 @@ export default function Home() {
             <button
               onClick={hangUp}
               style={{ background: "none", border: "none", color: "#5a5045", fontSize: 11, fontFamily: "'IBM Plex Mono', monospace", cursor: "pointer", marginTop: 12, letterSpacing: 2 }}
+            >
+              cancel
+            </button>
+          </div>
+        )}
+
+        {/* CONNECTING — matched, waiting for ICE/WebRTC */}
+        {isConnecting && (
+          <div style={{ animation: "fadeIn 0.3s ease", padding: 20, borderRadius: 20, textAlign: "center" }}>
+            <div style={{
+              width: 32, height: 32,
+              border: "2px solid #3a3530",
+              borderTop: "2px solid #c4a878",
+              borderRadius: "50%",
+              animation: "spin 1s linear infinite",
+              margin: "0 auto 16px",
+            }} />
+            <div style={{ fontSize: 13, color: "#8a7a6a", letterSpacing: 3, textTransform: "uppercase" }}>
+              connecting
+            </div>
+            <div style={{ fontSize: 10, color: "#4a4035", letterSpacing: 2, marginTop: 8 }}>
+              establishing connection
+            </div>
+            <button
+              onClick={hangUp}
+              style={{ background: "none", border: "none", color: "#5a5045", fontSize: 11, fontFamily: "'IBM Plex Mono', monospace", cursor: "pointer", marginTop: 16, letterSpacing: 2 }}
             >
               cancel
             </button>
