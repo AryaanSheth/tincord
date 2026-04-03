@@ -189,8 +189,14 @@ export function useWebRTC(socket: Socket) {
         clearConnectTimer();
         setCallState("connected");
         setConnectedAt(Date.now());
-      } else if (s === "failed" || s === "closed") {
+      } else if (s === "failed") {
+        // Notify the server so it cleans up the pair and tells the peer.
+        // Without this, the Redis pair entry lingers and the peer gets a
+        // spurious peer_hung_up only when *they* eventually disconnect.
+        socket.emit("hang_up");
         teardown("disconnected");
+        // Note: "closed" is intentionally not handled here — it fires when
+        // closePeer() calls pc.close() and must not trigger another teardown.
       }
     };
 
